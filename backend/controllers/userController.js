@@ -196,33 +196,41 @@ const updateUser = async (req, res) => {
 };
 
 const getSuggestedUsers = async (req, res) => {
-	try {
-		// exclude the current user from suggested users array and exclude users that current user is already following
-		const userId = req.user._id;
+  try {
+    const userId = req.user._id;
 
-		const usersFollowedByYou = await User.findById(userId).select("following");
+    // Fetch the current user's following list
+    const user = await User.findById(userId).select("following");
+    if (!user) return res.status(404).json({ error: "User not found" });
 
-		const users = await User.aggregate([
-			{
-				$match: {
-					_id: { $ne: userId },
-				},
-			},
-			{
-				$sample: { size: 10 },
-			},
-		]);
-		const filteredUsers = users.filter((user) => !usersFollowedByYou.following.includes(user._id));
-		const suggestedUsers = filteredUsers.slice(0, 4);
+    // Convert the following array of ObjectIds to an array of strings for easier comparison
+    const followedUsers = user.following.map(id => id.toString());
 
-		suggestedUsers.forEach((user) => (user.password = null));
+    const users = await User.aggregate([
+      {
+        $match: {
+          _id: { $ne: userId }, // Exclude current user
+        },
+      },
+      {
+        $sample: { size: 10 }, // Pick 10 random users
+      },
+    ]);
 
-		res.status(200).json(suggestedUsers);
-	} catch (error) {
-		res.status(500).json({ error: error.message });
-	}
+    // Filter out users that are already being followed
+    // We convert user._id to string to match our followedUsers array
+    const filteredUsers = users.filter((u) => !followedUsers.includes(u._id.toString()));
+    
+    // Slice to 4 and remove password
+    const suggestedUsers = filteredUsers.slice(0, 4);
+    suggestedUsers.forEach((u) => (u.password = null));
+
+    res.status(200).json(suggestedUsers);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+    console.log("Error in getSuggestedUsers: ", error.message);
+  }
 };
-
 const freezeAccount = async (req, res) => {
 	try {
 		const user = await User.findById(req.user._id);
